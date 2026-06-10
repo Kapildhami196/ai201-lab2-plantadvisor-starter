@@ -79,11 +79,4 @@ with gr.Blocks(title="Plant Advisor") as demo:
             )
 
 if __name__ == "__main__":
-    demo.launch(
-        theme=gr.themes.Default(
-            primary_hue="green",
-            secondary_hue="emerald",
-            neutral_hue="stone",
-            font=[gr.themes.GoogleFont("Inter"), "sans-serif"],
-        )
-    )
+  demo.launch()

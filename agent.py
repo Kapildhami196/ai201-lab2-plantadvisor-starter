@@ -83,19 +83,20 @@ SYSTEM_PROMPT = (
 # what the Groq API expects for tool results).
 # ──────────────────────────────────────────────
 
-def dispatch_tool(tool_name: str, tool_args: dict) -> str:
-    """Route a tool call to the correct function and return the result as a JSON string."""
+def dispatch_tool(tool_name: str, tool_args: dict | None) -> str:
+    tool_args = tool_args or {}
+
     print(f"  → Tool call: {tool_name}({tool_args})")
+
     if tool_name == "lookup_plant":
-        result = lookup_plant(tool_args["plant_name"])
+        result = lookup_plant(tool_args.get("plant_name", ""))
     elif tool_name == "get_seasonal_conditions":
         result = get_seasonal_conditions(tool_args.get("season"))
     else:
         result = {"error": f"Unknown tool: {tool_name}"}
+
     print(f"  ← Result: {json.dumps(result)[:120]}{'...' if len(json.dumps(result)) > 120 else ''}")
     return json.dumps(result)
-
-
 # ──────────────────────────────────────────────
 # Agent loop
 # ──────────────────────────────────────────────
@@ -124,8 +125,53 @@ def run_agent(user_message: str, history: list) -> str:
       - The assistant message must be appended BEFORE tool results
       - Tool result messages use role="tool" with a tool_call_id field
       - Append the assistant's message object directly (not just its content)
-      - The history format from Gradio: list of [user_message, assistant_message] pairs
+      - The history format from Gradio may be message dicts or user/assistant pairs
 
     Before writing code, complete specs/agent-loop-spec.md.
     """
-    return "🌱 Agent not yet implemented. Complete Milestone 2 to activate the Plant Advisor."
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+    for item in history:
+        if isinstance(item, dict):
+            role = item.get("role")
+            content = item.get("content")
+
+            if role in {"user", "assistant"} and content:
+                messages.append({"role": role, "content": content})
+
+        elif isinstance(item, (list, tuple)) and len(item) >= 2:
+            user_msg = item[0]
+            assistant_msg = item[1]
+
+            if user_msg:
+                messages.append({"role": "user", "content": user_msg})
+            if assistant_msg:
+                messages.append({"role": "assistant", "content": assistant_msg})
+
+    messages.append({"role": "user", "content": user_message})
+
+    for _ in range(MAX_TOOL_ROUNDS):
+        response = _client.chat.completions.create(
+            model=LLM_MODEL,
+            messages=messages,
+            tools=TOOL_DEFINITIONS,
+        )
+
+        msg = response.choices[0].message
+
+        if not msg.tool_calls:
+            return msg.content or ""
+
+        messages.append(msg)
+
+        for tool_call in msg.tool_calls:
+            tool_args = json.loads(tool_call.function.arguments or "{}") or {}
+            result = dispatch_tool(tool_call.function.name, tool_args)
+
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "content": result,
+            })
+
+    return "I wasn't able to fully process your request. Please try again."

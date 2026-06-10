@@ -122,7 +122,63 @@ for tool_call in assistant_message.tool_calls:
 *The loop should stop when: (a) the LLM returns a response with no tool calls, OR (b) the MAX_TOOL_ROUNDS limit is reached. Describe how you will detect each condition and what you will return in each case.*
 
 ```
-[your answer here]
+[### Loop termination conditions
+
+The loop should stop in two cases:
+
+1. If the LLM response has no `tool_calls`, that means the model has enough information and has produced the final answer. I detect this with:
+
+```python
+if not assistant_message.tool_calls:
+    return assistant_message.content or ""
+```
+
+2. If the loop reaches `MAX_TOOL_ROUNDS`, the agent should stop to prevent an infinite tool-calling loop. In that case, return a user-readable fallback message such as:
+
+```python
+return "I wasn't able to fully process your request. Please try again."
+```
+
+This protects the app from getting stuck if the model keeps requesting tools repeatedly.
+
+````
+
+### Extracting the final text response
+
+When the LLM stops requesting tools, the final text answer is stored in the assistant message's `content` field.
+
+```python
+assistant_message = response.choices[0].message
+return assistant_message.content or ""
+````
+
+The `response.choices[0].message` object contains the assistant's final message. The `content` field is the string that should be returned to Gradio and shown to the user.
+
+````
+
+## Implementation Notes
+
+**Trace of a working agent turn (what tools were called and in what order):**
+
+```text
+Query: "How should I care for my snake plant in winter?"
+Round 1 tool call: lookup_plant({"plant_name": "snake plant"})
+Round 1 tool call: get_seasonal_conditions({"season": "winter"})
+Final response: The agent combined snake plant care data with winter seasonal advice. It recommended watering less often, avoiding cold drafts, keeping the plant in indirect light, and reducing winter care intensity.
+````
+
+**What happens when you ask about a plant that isn't in the database?**
+
+```text
+When I asked about bird of paradise, the lookup tool could not find it in the local plant database. The agent clearly said it did not have specific care data for that plant, then gave general care guidance instead of pretending the plant existed in the database.
+```
+
+**One thing about the tool call API that surprised you:**
+
+```text
+One thing that surprised me is that the assistant tool-call message must be appended to the messages list before adding the tool result messages. The tool result also needs a matching tool_call_id so the API can connect the result back to the exact tool call that requested it.
+```
+]
 ```
 
 ---
